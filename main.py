@@ -1,20 +1,21 @@
 import logging
+import os
 import random
 from aiogram import Bot, Dispatcher, types
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler
 from aiohttp import web
 
-# Замените 'YOUR_BOT_TOKEN' на токен вашего бота
-API_TOKEN = 'YOUR_BOT_TOKEN'
+# Получение значений из переменных окружения
+API_TOKEN = os.getenv('BOT_TOKEN')
+WEBHOOK_URL = os.getenv('WEBHOOK_URL')
 
-# Настройки вебхука
-WEBHOOK_HOST = 'https://your.domain.com'  # ваш публичный домен с HTTPS
-WEBHOOK_PATH = '/webhook'
-WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
+# Проверка наличия необходимых переменных
+if not API_TOKEN or not WEBHOOK_URL:
+    raise ValueError("Необходимо установить переменные окружения BOT_TOKEN и WEBHOOK_URL")
 
-# Настройки веб-сервера (локальный адрес и порт)
+# Настройки веб-сервера
 WEBAPP_HOST = '0.0.0.0'
-WEBAPP_PORT = 3000
+WEBAPP_PORT = int(os.getenv('PORT', 10000))
 
 # Инициализация бота и диспетчера
 bot = Bot(token=API_TOKEN, parse_mode='HTML')
@@ -25,7 +26,27 @@ dp = Dispatcher()
 async def handle_message(message: types.Message):
     if random.random() < 0.5:
         # Список случайных реакций (эмодзи)
-        reactions = ['😀', '😂', '😎', '👍', '🙌']
+        reactions = [
+        "👍", "👎", "❤", "🔥", 
+        "🥰", "👏", "😁", "🤔",
+        "🤯", "😱", "🤬", "😢",
+        "🎉", "🤩", "🤮", "💩",
+        "🙏", "👌", "🕊", "🤡",
+        "🥱", "🥴", "😍", "🐳",
+        "❤‍🔥", "🌚", "🌭", "💯",
+        "🤣", "⚡", "🍌", "🏆",
+        "💔", "🤨", "😐", "🍓",
+        "🍾", "💋", "🖕", "😈",
+        "😴", "😭", "🤓", "👻",
+        "👨‍💻", "👀", "🎃", "🙈",
+        "😇", "😨", "🤝", "✍",
+        "🤗", "🫡", "🎅", "🎄",
+        "☃", "💅", "🤪", "🗿",
+        "🆒", "💘", "🙉", "🦄",
+        "😘", "💊", "🙊", "😎",
+        "👾", "🤷‍♂", "🤷", "🤷‍♀",
+        "😡"
+    ]
         reaction = random.choice(reactions)
         await message.reply(reaction)
 
@@ -43,8 +64,8 @@ async def on_shutdown(app: web.Application):
 
 # Создаем веб-приложение на базе aiohttp
 app = web.Application()
-# Регистрируем обработчик обновлений по пути WEBHOOK_PATH
-SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=WEBHOOK_PATH)
+# Регистрируем обработчик обновлений по пути /webhook
+SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path='/webhook')
 
 # Регистрируем функции старта и остановки
 app.on_startup.append(on_startup)
@@ -53,3 +74,4 @@ app.on_shutdown.append(on_shutdown)
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
     web.run_app(app, host=WEBAPP_HOST, port=WEBAPP_PORT)
+
