@@ -63,13 +63,12 @@ def subscription_required(handler):
     async def wrapper(message: types.Message, *args, **kwargs):
         user_id = message.from_user.id
         if not await check_sub_channels(CHANNELS, user_id):
-            # Передаём явно inline_keyboard=[], чтобы не было ошибки валидации
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[], row_width=1)
-            for channel in CHANNELS:
-                subscribe_button = InlineKeyboardButton(text=channel[0], url=channel[2])
-                keyboard.add(subscribe_button)
-            check_button = InlineKeyboardButton(text="Проверить", callback_data="check_sub")
-            keyboard.add(check_button)
+            # Формируем клавиатуру: каждая кнопка подписки в отдельном ряду и кнопка "Проверить" в последнем ряду.
+            keyboard = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text=channel[0], url=channel[2])] for channel in CHANNELS
+                ] + [[InlineKeyboardButton(text="Проверить", callback_data="check_sub")]]
+            )
             await message.answer(NOT_SUB_MESSAGE, reply_markup=keyboard)
             return  # Прерываем выполнение основного обработчика
         return await handler(message, *args, **kwargs)
@@ -140,3 +139,4 @@ app.on_shutdown.append(on_shutdown)
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
     web.run_app(app, host=WEBAPP_HOST, port=WEBAPP_PORT)
+
