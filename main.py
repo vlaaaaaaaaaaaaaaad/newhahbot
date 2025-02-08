@@ -54,7 +54,7 @@ async def handle_message(message: types.Message):
         # Создаем объект реакции типа ReactionTypeEmoji
         reaction_obj = ReactionTypeEmoji(emoji=reaction_emoji)
         # Отправляем реакцию на сообщение (reaction передаётся в виде списка)
-        await message.react([reaction_obj], is_big=False)
+        await message.react([reaction_obj], is_big=True)
 
 # Функция, вызываемая при старте веб-приложения: устанавливаем вебхук
 async def on_startup(app: web.Application):
