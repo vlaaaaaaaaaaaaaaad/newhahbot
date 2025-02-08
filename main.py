@@ -55,11 +55,16 @@ async def check_sub_channels(channels: list, user_id: int) -> bool:
     return True
 
 def subscription_required(handler):
+    """
+    Декоратор для проверки подписки пользователя на обязательные каналы.
+    Если пользователь не подписан, отправляется сообщение с кнопками для подписки и проверки.
+    """
     @wraps(handler)
     async def wrapper(message: types.Message, *args, **kwargs):
         user_id = message.from_user.id
         if not await check_sub_channels(CHANNELS, user_id):
-            keyboard = InlineKeyboardMarkup(row_width=1)
+            # Передаём явно inline_keyboard=[], чтобы не было ошибки валидации
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[], row_width=1)
             for channel in CHANNELS:
                 subscribe_button = InlineKeyboardButton(text=channel[0], url=channel[2])
                 keyboard.add(subscribe_button)
