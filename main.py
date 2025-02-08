@@ -23,7 +23,7 @@ WEBAPP_PORT = int(os.getenv('PORT', 10000))
 bot = Bot(token=API_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
 
-# Обработчик сообщений: с вероятностью 50% отправляем случайную реакцию
+# Обработчик сообщений: с вероятностью 50% ставим случайную реакцию на сообщение
 @dp.message()
 async def handle_message(message: types.Message):
     if random.random() < 0.5:
@@ -50,7 +50,8 @@ async def handle_message(message: types.Message):
             "😡"
         ]
         reaction = random.choice(reactions)
-        await message.reply(reaction)
+        # Отправляем реакцию на сообщение (reaction передаётся в виде списка)
+        await message.react([reaction], is_big=False)
 
 # Функция, вызываемая при старте веб-приложения: устанавливаем вебхук
 async def on_startup(app: web.Application):
