@@ -10,8 +10,7 @@ from aiogram.enums import ParseMode
 from aiogram.types import ReactionTypeEmoji, InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler
 
-# --------------------- Конфигурация ---------------------
-
+# --------------------- КОНФИГУРАЦИЯ ---------------------
 API_TOKEN = os.getenv('BOT_TOKEN')
 WEBHOOK_URL = os.getenv('WEBHOOK_URL')
 if not API_TOKEN or not WEBHOOK_URL:
@@ -20,26 +19,24 @@ if not API_TOKEN or not WEBHOOK_URL:
 WEBAPP_HOST = '0.0.0.0'
 WEBAPP_PORT = int(os.getenv('PORT', 10000))
 
-# Инициализация бота и диспетчера
 bot = Bot(token=API_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
 
-# Список обязательных каналов в формате: [название, chat_id, URL]
+# Список обязательных каналов: [название, chat_id, URL]
 CHANNELS = [
     ["ХахБот новости", "-1002404360993", "https://t.me/hahbot_news"]
 ]
 
-# Сообщение для пользователей, не подписанных на канал(ы)
+# Сообщение для пользователей, не подписанных на каналы
 NOT_SUB_MESSAGE = (
     "Вы не подписаны на обязательный канал. Пожалуйста, подпишитесь, чтобы использовать бота."
 )
 
-# --------------------- Функции проверки подписки ---------------------
-
+# --------------------- ФУНКЦИИ ДЛЯ ПРОВЕРКИ ПОДПИСКИ ---------------------
 async def check_sub_channels(channels: list, user_id: int) -> bool:
     """
     Проверяет, подписан ли пользователь (user_id) на все указанные каналы.
-    Использует метод get_chat_member для каждого канала.
+    Возвращает True, если подписан на все каналы, иначе False.
     """
     for channel in channels:
         channel_id = channel[1]
@@ -48,40 +45,37 @@ async def check_sub_channels(channels: list, user_id: int) -> bool:
             if member.status not in ["member", "administrator", "creator"]:
                 return False
         except Exception as e:
-            logging.error(
-                f"Ошибка проверки подписки для user_id {user_id} в канале {channel_id}: {e}"
-            )
+            logging.error(f"Ошибка проверки подписки для user_id {user_id} в канале {channel_id}: {e}")
             return False
     return True
 
 def subscription_required(handler):
     """
-    Декоратор для проверки подписки пользователя на обязательные каналы.
-    Если пользователь не подписан, отправляется сообщение с кнопками для подписки и проверки.
+    Декоратор для проверки подписки пользователя.
+    Если пользователь не подписан, отправляется сообщение с кнопками для подписки и проверки,
+    а выполнение основного обработчика прерывается.
     """
     @wraps(handler)
     async def wrapper(message: types.Message, *args, **kwargs):
-        user_id = message.from_user.id
-        if not await check_sub_channels(CHANNELS, user_id):
-            # Формируем клавиатуру: каждая кнопка подписки в отдельном ряду и кнопка "Проверить" в последнем ряду.
+        if not await check_sub_channels(CHANNELS, message.from_user.id):
             keyboard = InlineKeyboardMarkup(
                 inline_keyboard=[
-                    [InlineKeyboardButton(text=channel[0], url=channel[2])] for channel in CHANNELS
+                    [InlineKeyboardButton(text=channel[0], url=channel[2])]
+                    for channel in CHANNELS
                 ] + [[InlineKeyboardButton(text="Проверить", callback_data="check_sub")]]
             )
             await message.answer(NOT_SUB_MESSAGE, reply_markup=keyboard)
-            return  # Прерываем выполнение основного обработчика
+            return
         return await handler(message, *args, **kwargs)
     return wrapper
 
-# --------------------- Обработчики ---------------------
-
+# --------------------- ОБРАБОТЧИКИ ---------------------
 @dp.message()
 @subscription_required
 async def handle_message(message: types.Message):
     """
     Основной обработчик сообщений.
-    Если пользователь подписан на все каналы, с вероятностью 50% бот ставит случайную реакцию.
+    Если пользователь подписан, с вероятностью 50% бот ставит случайную реакцию.
     """
     if random.random() < 0.5:
         reactions = [
@@ -97,26 +91,28 @@ async def handle_message(message: types.Message):
             "😡"
         ]
         reaction_emoji = random.choice(reactions)
-        reaction_obj = ReactionTypeEmoji(emoji=reaction_emoji)
-        await message.react([reaction_obj], is_big=True)
+        await message.react([ReactionTypeEmoji(emoji=reaction_emoji)], is_big=True)
 
 @dp.callback_query(lambda c: c.data == "check_sub")
 async def process_check_sub(callback_query: types.CallbackQuery):
     """
     Обработчик нажатия кнопки "Проверить".
-    Если пользователь теперь подписан, отправляется уведомление об успехе.
+    Если пользователь подписан, редактирует сообщение бота, заменяя его на приветствие
+    и удаляя инлайн-клавиатуру.
     """
-    user_id = callback_query.from_user.id
-    if await check_sub_channels(CHANNELS, user_id):
-        await callback_query.answer("Спасибо, теперь вы подписаны!", show_alert=True)
-        # При необходимости можно обновить или удалить сообщение с кнопками
-    else:
-        await callback_query.answer(
-            "Вы все еще не подписаны. Пожалуйста, подпишитесь.", show_alert=True
+    if await check_sub_channels(CHANNELS, callback_query.from_user.id):
+        welcome_text = "Добро пожаловать! Вы успешно подписались на обязательные каналы."
+        await bot.edit_message_text(
+            text=welcome_text,
+            chat_id=callback_query.message.chat.id,
+            message_id=callback_query.message.message_id,
+            reply_markup=None  # Удаляем клавиатуру
         )
+        await callback_query.answer()  # Скрывает "часики"
+    else:
+        await callback_query.answer("Вы все еще не подписаны. Пожалуйста, подпишитесь.", show_alert=True)
 
-# --------------------- Функции для работы вебхука ---------------------
-
+# --------------------- НАСТРОЙКА ВЕБХУКА ---------------------
 async def on_startup(app: web.Application):
     logging.info("Установка вебхука...")
     await bot.set_webhook(WEBHOOK_URL)
@@ -127,16 +123,12 @@ async def on_shutdown(app: web.Application):
     await bot.delete_webhook()
     await bot.session.close()
 
-# --------------------- Инициализация веб-приложения ---------------------
-
 app = web.Application()
 SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path='/webhook')
 app.on_startup.append(on_startup)
 app.on_shutdown.append(on_shutdown)
 
-# --------------------- Точка входа ---------------------
-
+# --------------------- ТОЧКА ВХОДА ---------------------
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
     web.run_app(app, host=WEBAPP_HOST, port=WEBAPP_PORT)
-
