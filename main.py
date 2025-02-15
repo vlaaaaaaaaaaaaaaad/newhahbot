@@ -1,12 +1,15 @@
+import asyncio
 import logging
 import os
+import random
 from functools import wraps
 
-from aiohttp import web
+from aiohttp import web, ClientSession
 from aiogram import Bot, Dispatcher, types
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.types import ReactionTypeEmoji, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import (ReactionTypeEmoji, InlineKeyboardButton,
+                           InlineKeyboardMarkup)
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler
 
 # --------------------- КОНФИГУРАЦИЯ ---------------------
@@ -79,7 +82,7 @@ async def generate_character_ai_response(user_message: str) -> str:
     """
     Генерирует ответ с помощью Character AI API.
 
-    Для каждого нового запроса создается новый клиент, устанавливается соединение,
+    Для каждого нового запроса создаётся новый клиент, устанавливается соединение,
     начинается новый чат и отправляется сообщение пользователя.
 
     :param user_message: Текст сообщения от пользователя.
@@ -90,9 +93,7 @@ async def generate_character_ai_response(user_message: str) -> str:
         client = aiocai.Client(CLIENT_API_KEY)
         me = await client.get_me()
         async with await client.connect() as chat:
-            # Создаем новый чат с заданным CHARACTER_ID
             new_chat, greeting = await chat.new_chat(CHARACTER_ID, me.id)
-            # Отправляем сообщение пользователя и получаем ответ от Character AI
             response = await chat.send_message(CHARACTER_ID, new_chat.chat_id, user_message)
             return response.text
     except Exception as e:
@@ -104,21 +105,41 @@ async def generate_character_ai_response(user_message: str) -> str:
 @subscription_required
 async def handle_message(message: types.Message):
     """
-    Основной обработчик сообщений.
-    Если пользователь подписан, генерируется ответ через Character AI API и отправляется в Telegram.
+    Основной обработчик текстовых сообщений.
+    Генерируется ответ через Character AI API и отправляется в Telegram.
+    Дополнительно, с вероятностью 50% отправляется реакция (эмодзи).
     """
     response_text = await generate_character_ai_response(message.text)
     if response_text:
         await message.answer(response_text)
     else:
         await message.answer("Произошла ошибка при генерации ответа. Попробуйте позже.")
+    
+    # Дополнительная реакция с вероятностью 50%
+    if random.random() < 0.5:
+        reactions = [
+            "👍", "👎", "❤", "🔥", "🥰", "👏", "😁", "🤔",
+            "🤯", "😱", "🤬", "😢", "🎉", "🤩", "🤮", "💩",
+            "🙏", "👌", "🕊", "🤡", "🥱", "🥴", "😍", "🐳",
+            "❤‍🔥", "🌚", "🌭", "💯", "🤣", "⚡", "🍌", "🏆",
+            "💔", "🤨", "😐", "🍓", "🍾", "💋", "🖕", "😈",
+            "😴", "😭", "🤓", "👻", "👨‍💻", "👀", "🎃", "🙈",
+            "😇", "😨", "🤝", "✍", "🤗", "🫡", "🎅", "🎄",
+            "☃", "💅", "🤪", "🗿", "🆒", "💘", "🙉", "🦄",
+            "😘", "💊", "🙊", "😎", "👾", "🤷‍♂", "🤷", "🤷‍♀",
+            "😡"
+        ]
+        reaction = random.choice(reactions)
+        try:
+            await message.react([ReactionTypeEmoji(emoji=reaction)], is_big=True)
+        except Exception as e:
+            logging.error(f"Ошибка при отправке реакции: {e}")
 
-@dp.callback_query(lambda c: c.data == "check_sub")
+@dp.callback_query_handler(lambda c: c.data == "check_sub")
 async def process_check_sub(callback_query: types.CallbackQuery):
     """
-    Обработчик нажатия кнопки "Проверить".
-    Если пользователь подписан, редактирует сообщение бота, заменяя его на приветствие
-    и удаляя инлайн-клавиатуру.
+    Обработчик кнопки "Проверить".
+    Если пользователь подписан, редактирует сообщение бота, заменяя его на приветствие и удаляя инлайн-клавиатуру.
     """
     if await check_sub_channels(CHANNELS, callback_query.from_user.id):
         welcome_text = "Добро пожаловать! Вы успешно подписались на обязательные каналы."
@@ -128,20 +149,57 @@ async def process_check_sub(callback_query: types.CallbackQuery):
             message_id=callback_query.message.message_id,
             reply_markup=None  # Удаляем клавиатуру
         )
-        await callback_query.answer()  # Скрывает "часики"
+        await callback_query.answer()  # Скрываем "часики"
     else:
         await callback_query.answer("Вы все еще не подписаны. Пожалуйста, подпишитесь.", show_alert=True)
+
+# --------------------- ДОПОЛНИТЕЛЬНЫЙ МАРШРУТ /check ---------------------
+async def check_handler(request: web.Request) -> web.Response:
+    """
+    Обработчик пути /check.
+    Возвращает "OK" для поддержания активности сервера.
+    """
+    return web.Response(text="OK")
+
+# --------------------- ФОНОВАЯ ЗАДАЧА KEEP-ALIVE ---------------------
+async def keep_alive():
+    """
+    Периодически отправляет GET-запрос к маршруту /check, чтобы сервер не переходил в спящий режим.
+    """
+    await asyncio.sleep(5)  # небольшая задержка при старте
+    while True:
+        try:
+            async with ClientSession() as session:
+                # Используем localhost и порт сервера
+                async with session.get(f"http://localhost:{WEBAPP_PORT}/check") as resp:
+                    await resp.text()
+        except Exception as e:
+            logging.error(f"Ошибка в keep_alive: {e}")
+        await asyncio.sleep(240)  # каждые 4 минуты
 
 # --------------------- НАСТРОЙКА ВЕБХУКА ---------------------
 async def on_startup(app: web.Application):
     logging.info("Установка вебхука...")
     await bot.set_webhook(WEBHOOK_URL)
     logging.info(f"Вебхук установлен: {WEBHOOK_URL}")
+    # Добавляем маршрут /check
+    app.router.add_get("/check", check_handler)
+    # Запускаем фоновую задачу keep_alive
+    app['keep_alive'] = asyncio.create_task(keep_alive())
 
 async def on_shutdown(app: web.Application):
     logging.info("Удаление вебхука и закрытие сессии...")
     await bot.delete_webhook()
-    await bot.session.close()
+    try:
+        await bot.session.close()
+    except RuntimeError as e:
+        if "Event loop is closed" in str(e):
+            logging.warning("Event loop is closed при закрытии сессии, пропускаем.")
+        else:
+            raise e
+    # Отменяем задачу keep_alive
+    if 'keep_alive' in app:
+        app['keep_alive'].cancel()
 
 app = web.Application()
 SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path='/webhook')
