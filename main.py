@@ -1,6 +1,5 @@
 import logging
 import os
-import random
 from functools import wraps
 
 from aiohttp import web
@@ -15,6 +14,12 @@ API_TOKEN = os.getenv('BOT_TOKEN')
 WEBHOOK_URL = os.getenv('WEBHOOK_URL')
 if not API_TOKEN or not WEBHOOK_URL:
     raise ValueError("Необходимо установить переменные окружения BOT_TOKEN и WEBHOOK_URL")
+
+# Переменные для Character AI API
+CHARACTER_ID = os.getenv("CHARACTER_ID")
+CLIENT_API_KEY = os.getenv("CLIENT_API_KEY")
+if not CHARACTER_ID or not CLIENT_API_KEY:
+    raise ValueError("Необходимо установить переменные окружения CHARACTER_ID и CLIENT_API_KEY")
 
 WEBAPP_HOST = '0.0.0.0'
 WEBAPP_PORT = int(os.getenv('PORT', 10000))
@@ -69,29 +74,44 @@ def subscription_required(handler):
         return await handler(message, *args, **kwargs)
     return wrapper
 
+# --------------------- ФУНКЦИИ ДЛЯ ГЕНЕРАЦИИ ОТВЕТА ---------------------
+async def generate_character_ai_response(user_message: str) -> str:
+    """
+    Генерирует ответ с помощью Character AI API.
+
+    Для каждого нового запроса создается новый клиент, устанавливается соединение,
+    начинается новый чат и отправляется сообщение пользователя.
+
+    :param user_message: Текст сообщения от пользователя.
+    :return: Сгенерированный текст ответа или пустую строку в случае ошибки.
+    """
+    from characterai import aiocai  # Импорт асинхронного клиента CharacterAI
+    try:
+        client = aiocai.Client(CLIENT_API_KEY)
+        me = await client.get_me()
+        async with await client.connect() as chat:
+            # Создаем новый чат с заданным CHARACTER_ID
+            new_chat, greeting = await chat.new_chat(CHARACTER_ID, me.id)
+            # Отправляем сообщение пользователя и получаем ответ от Character AI
+            response = await chat.send_message(CHARACTER_ID, new_chat.chat_id, user_message)
+            return response.text
+    except Exception as e:
+        logging.error(f"Ошибка при генерации ответа через Character AI API: {e}")
+        return ""
+
 # --------------------- ОБРАБОТЧИКИ ---------------------
 @dp.message()
 @subscription_required
 async def handle_message(message: types.Message):
     """
     Основной обработчик сообщений.
-    Если пользователь подписан, с вероятностью 50% бот ставит случайную реакцию.
+    Если пользователь подписан, генерируется ответ через Character AI API и отправляется в Telegram.
     """
-    if random.random() < 0.5:
-        reactions = [
-            "👍", "👎", "❤", "🔥", "🥰", "👏", "😁", "🤔",
-            "🤯", "😱", "🤬", "😢", "🎉", "🤩", "🤮", "💩",
-            "🙏", "👌", "🕊", "🤡", "🥱", "🥴", "😍", "🐳",
-            "❤‍🔥", "🌚", "🌭", "💯", "🤣", "⚡", "🍌", "🏆",
-            "💔", "🤨", "😐", "🍓", "🍾", "💋", "🖕", "😈",
-            "😴", "😭", "🤓", "👻", "👨‍💻", "👀", "🎃", "🙈",
-            "😇", "😨", "🤝", "✍", "🤗", "🫡", "🎅", "🎄",
-            "☃", "💅", "🤪", "🗿", "🆒", "💘", "🙉", "🦄",
-            "😘", "💊", "🙊", "😎", "👾", "🤷‍♂", "🤷", "🤷‍♀",
-            "😡"
-        ]
-        reaction_emoji = random.choice(reactions)
-        await message.react([ReactionTypeEmoji(emoji=reaction_emoji)], is_big=True)
+    response_text = await generate_character_ai_response(message.text)
+    if response_text:
+        await message.answer(response_text)
+    else:
+        await message.answer("Произошла ошибка при генерации ответа. Попробуйте позже.")
 
 @dp.callback_query(lambda c: c.data == "check_sub")
 async def process_check_sub(callback_query: types.CallbackQuery):
