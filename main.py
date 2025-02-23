@@ -124,6 +124,11 @@ async def process_check_sub(callback_query: types.CallbackQuery):
     else:
         await callback_query.answer("Вы все еще не подписаны. Пожалуйста, подпишитесь.", show_alert=True)
 
+# --------------------- ДОБАВЛЕНИЕ ОБРАБОТЧИКА ДЛЯ ПУТИ "/" ---------------------
+async def handle_root(request: web.Request):
+    logging.info("Получен запрос на корневой путь от %s", request.remote)
+    return web.Response(text="OK")
+
 # --------------------- НАСТРОЙКА ВЕБХУКА ---------------------
 async def on_startup(app: web.Application):
     logging.info("Установка вебхука...")
@@ -137,6 +142,9 @@ async def on_shutdown(app: web.Application):
 
 app = web.Application()
 SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path='/webhook')
+# Регистрируем обработчик для GET-запросов на путь "/"
+app.router.add_get("/", handle_root)
+
 app.on_startup.append(on_startup)
 app.on_shutdown.append(on_shutdown)
 
