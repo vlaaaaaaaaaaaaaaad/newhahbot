@@ -62,7 +62,7 @@ REACTIONS: List[str] = [
 # Файл generate_image/prompts.txt должен задавать переменные:
 # objects, places, styles, colors, adjectives, elements, improvers
 async def load_prompts() -> None:
-    async with aiofiles.open('generate_image/prompts.txt', mode='r', encoding='utf-8') as f:
+    async with aiofiles.open('prompts.txt', mode='r', encoding='utf-8') as f:
         content = await f.read()
     exec(content, globals())
     logging.info("Промпты успешно загружены.")
