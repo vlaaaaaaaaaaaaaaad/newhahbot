@@ -1,4 +1,7 @@
 aiogram
 aiohttp
 websockets==13.1
-git+https://github.com/kramcat/CharacterAI.git#egg=CharacterAI
+git+https://github.com/kramcat/CharacterAI.git
+aiofiles
+httpx
+mtranslate
